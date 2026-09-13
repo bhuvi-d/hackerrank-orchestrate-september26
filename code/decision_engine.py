@@ -238,7 +238,7 @@ class DecisionEngine:
                         'status': 'affordable_with_plan',
                         'method': 'full_payment',
                         'plan': plan_str,
-                        'earliest_date': sc_earliest or req_date_str,
+                        'earliest_date': sc_earliest,
                         'spending_changes': changes_str,
                         'explanation': explanation,
                         'meets_deadline': True,
@@ -283,7 +283,7 @@ class DecisionEngine:
                             'status': 'affordable_with_plan',
                             'method': 'full_payment',
                             'plan': plan_str,
-                            'earliest_date': sc_earliest or req_date_str,
+                            'earliest_date': sc_earliest,
                             'spending_changes': changes_str,
                             'explanation': explanation,
                             'meets_deadline': True,
@@ -337,7 +337,7 @@ class DecisionEngine:
                                 'status': 'affordable_with_plan',
                                 'method': 'full_payment',
                                 'plan': plan_str,
-                                'earliest_date': sc_earliest or req_date_str,
+                                'earliest_date': sc_earliest,
                                 'spending_changes': changes_str,
                                 'explanation': explanation,
                                 'meets_deadline': True,
@@ -384,6 +384,9 @@ class DecisionEngine:
             'not_affordable': 3
         }
         
+        # Plans that miss the requested completion date are never eligible for output.
+        candidate_plans = [plan for plan in candidate_plans if plan['meets_deadline']]
+
         if candidate_plans:
             candidate_plans.sort(key=lambda p: (
                 0 if p['meets_deadline'] else 1,
