@@ -127,8 +127,8 @@ class DecisionEngine:
                     f"starting {start_d.strftime('%d %B %Y').lstrip('0')}. "
                     f"This leaves at least {format_currency_amount(home_curr, min_bal)} available."
                 )
-                # earliest_date for installments: the date the full amount is completed (last installment date)
-                inst_earliest = earliest_full_date if earliest_full_date else format_date(final_payment_date)
+                # earliest_date is always the first conservative projected date for one safe full payment
+                inst_earliest = earliest_full_date
                 candidate_plans.append({
                     'status': 'affordable_with_plan',
                     'method': 'installments',

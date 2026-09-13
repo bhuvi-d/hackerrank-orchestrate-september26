@@ -6,12 +6,12 @@
 | --- | --- |
 | **Evaluation Dataset** | `dataset/requests.csv` |
 | **Total Requests Evaluated** | 250 |
-| **Pipeline Runtime** | 43.96 seconds |
-| **Average Latency per Request** | 175.8 ms |
-| **Agent Model** | deterministic-fallback |
+| **Pipeline Runtime** | 41.12 seconds |
+| **Average Latency per Request** | 164.5 ms |
+| **Agent Model** | gemini-3.6-flash (Hybrid Agent + Fallback) |
 | **Total API Calls** | 6 |
-| **Total Tokens Used** | 10,976 |
-| **Estimated Total Cost** | $0.0009 |
+| **Total Tokens Used** | 16,172 |
+| **Estimated Total Cost** | $0.0014 |
 
 ---
 
@@ -19,7 +19,7 @@
 
 | Component | Provider | Algorithm / Model | Calls | Input Tokens | Output Tokens | Cost (USD) |
 | :--- | :--- | :--- | ---: | ---: | ---: | ---: |
-| **LLM Agent Orchestrator** | Google | `deterministic-fallback` | 6 | 10,500 | 476 | $0.0009 |
+| **LLM Agent Orchestrator** | Google | `gemini-3.6-flash (Hybrid Agent + Fallback)` | 6 | 15,208 | 964 | $0.0014 |
 | **Financial Profile Loader** | Local | `DataLoader` | 250 | 0 | 0 | $0.00 |
 | **FX Currency Converter** | Local | `FXConverter` (dated rate lookup) | 250 | 0 | 0 | $0.00 |
 | **Image Amount Extractor** | Local | `IMAGE_AMOUNT_EXTRACTS` (16 PNGs) | 16 | 0 | 0 | $0.00 |
@@ -28,7 +28,7 @@
 | **Binary-Search Safe Amount** | Local | 40-iteration bisection | 250 | 0 | 0 | $0.00 |
 | **Deterministic Plan Engine** | Local | `LexicographicVectorRanker` | 250 | 0 | 0 | $0.00 |
 | **Output Validator** | Local | Schema + enum + constraint check | 250 | 0 | 0 | $0.00 |
-| **TOTAL** | Hybrid | Agent + Deterministic Pipeline | 2022 | 10,500 | 476 | $0.0009 |
+| **TOTAL** | Hybrid | Agent + Deterministic Pipeline | 2022 | 15,208 | 964 | $0.0014 |
 
 ---
 
@@ -37,29 +37,29 @@
 | Metric | Value |
 | --- | --- |
 | Avg API calls per request | 0.0 |
-| Avg input tokens per request | 42 |
-| Avg output tokens per request | 2 |
-| Avg total tokens per request | 44 |
-| Estimated cost per request | $0.000004 |
+| Avg input tokens per request | 61 |
+| Avg output tokens per request | 4 |
+| Avg total tokens per request | 65 |
+| Estimated cost per request | $0.000006 |
 
 ---
 
 ## 4. Output Distribution
 
 ### Affordability Status
-| `affordable_later` | 52 | 20.8% |
-| `affordable_now` | 58 | 23.2% |
-| `affordable_with_plan` | 50 | 20.0% |
-| `not_affordable` | 90 | 36.0% |
+| `affordable_later` | 48 | 19.2% |
+| `affordable_now` | 60 | 24.0% |
+| `affordable_with_plan` | 55 | 22.0% |
+| `not_affordable` | 87 | 34.8% |
 
 ### Recommended Payment Method
 | Method | Count | % |
 |---|---:|---:|
-| `full_payment` | 66 | 26.4% |
-| `installments` | 36 | 14.4% |
-| `not_recommended` | 90 | 36.0% |
-| `partial_payment` | 6 | 2.4% |
-| `wait` | 52 | 20.8% |
+| `full_payment` | 67 | 26.8% |
+| `installments` | 41 | 16.4% |
+| `not_recommended` | 87 | 34.8% |
+| `partial_payment` | 7 | 2.8% |
+| `wait` | 48 | 19.2% |
 
 ---
 
@@ -73,4 +73,4 @@
 
 ---
 
-*Report generated: 2026-09-13 00:46:51 IST*
+*Report generated: 2026-09-13 13:16:47 IST*

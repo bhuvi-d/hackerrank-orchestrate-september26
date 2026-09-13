@@ -55,72 +55,87 @@ class FinancialSimulator:
 
         # Check if salary was declared ended
         has_final_salary = any('Final employer payroll' in e['description'] for e in user_events if e['status'] == 'settled' and (parse_date(e['settlement_date'] or e['event_date']) or req_date) <= req_date)
-        if salary_update.get('seasonal_ended') or has_final_salary:
-            salary_ended = True
-        else:
-            salary_ended = False
+        salary_ended = salary_update.get('seasonal_ended') or has_final_salary
 
-        grouped = defaultdict(list)
+        image_eids = getattr(self.loader, 'image_event_ids', set())
+
+        # Filter historical events: only settled/scheduled/pending on or before request_date
+        historical_events = []
         for e in user_events:
             if e['status'] not in ('settled', 'scheduled', 'pending'):
                 continue
             s_date = parse_date(e['settlement_date'] or e['event_date'])
-            if not s_date:
+            if not s_date or s_date > req_date:
                 continue
-            key = (e['category'], e['direction'], e['event_type'])
+            # Exclude non-cash unrealized investments
+            if e['status'] == 'unrealized' or e['event_type'] == 'non_cash':
+                continue
+            # Exclude one-off credits like prizes, lotteries, windfalls
+            if e['category'] in ('windfall', 'lottery', 'investment', 'bonus') and e['direction'] == 'credit':
+                continue
+            # Exclude one-off arrears or promotion adjustments from recurring baseline
+            desc_l = e['description'].lower()
+            if 'arrears' in desc_l or 'promotion' in desc_l:
+                continue
+            historical_events.append((s_date, e))
+
+        grouped = defaultdict(list)
+        for s_date, e in historical_events:
+            key = (e['category'], e['direction'])
             grouped[key].append((s_date, e))
 
         streams = []
-        # Build set of image event IDs for fast lookup
-        image_eids = getattr(self.loader, 'image_event_ids', set())
-        
-        for (cat, direction, etype), ev_list in grouped.items():
+        for (cat, direction), ev_list in grouped.items():
             ev_list.sort(key=lambda x: x[0])
             dates = [x[0] for x in ev_list]
             events = [x[1] for x in ev_list]
             
-            # If salary ended, do not project recurring salary
             if cat == 'salary' and salary_ended:
                 continue
 
-            if len(dates) >= 2 or cat == 'salary' or etype == 'salary':
+            if len(dates) >= 2 or cat == 'salary':
                 intervals = [(dates[i+1] - dates[i]).days for i in range(len(dates)-1)]
                 avg_interval = sum(intervals) / len(intervals) if intervals else 30
                 
-                # Check intervals
-                is_monthly = any(25 <= inv <= 35 for inv in intervals) or len(dates) <= 6 or cat in (
-                    'salary', 'rent', 'housing', 'utilities', 'debt_repayment', 'insurance', 
-                    'education', 'healthcare', 'family_support', 'music_subscription', 
-                    'delivery_membership', 'cloud_storage', 'streaming', 'gym'
-                )
-                
-                # Specific interval matching for weekly/biweekly
+                is_monthly = False
                 interval_days = None
-                if not is_monthly:
-                    if intervals:
-                        recent_interval = intervals[-1]
-                        if 6 <= recent_interval <= 8:
+
+                if cat in ('rent', 'housing', 'utilities', 'debt_repayment', 'insurance', 
+                           'education', 'healthcare', 'family_support', 'music_subscription', 
+                           'delivery_membership', 'cloud_storage', 'streaming', 'gym'):
+                    is_monthly = True
+                elif cat == 'salary':
+                    if intervals and sum(5 <= inv <= 9 for inv in intervals) >= len(intervals) * 0.6:
+                        is_monthly = False
+                        interval_days = 7
+                    elif intervals and sum(12 <= inv <= 16 for inv in intervals) >= len(intervals) * 0.6:
+                        is_monthly = False
+                        interval_days = 14
+                    else:
+                        is_monthly = True
+                else:
+                    if any(25 <= inv <= 35 for inv in intervals):
+                        is_monthly = True
+                    elif intervals:
+                        recent_inv = intervals[-1]
+                        if 5 <= recent_inv <= 8:
                             interval_days = 7
-                        elif 9 <= recent_interval <= 11:
+                        elif 9 <= recent_inv <= 11:
                             interval_days = 10
-                        elif 13 <= recent_interval <= 16:
+                        elif 12 <= recent_inv <= 16:
                             interval_days = 14
-                        elif 20 <= recent_interval <= 23:
+                        elif 19 <= recent_inv <= 24:
                             interval_days = 21
                         else:
-                            interval_days = round(avg_interval)
+                            interval_days = round(avg_interval) if avg_interval > 0 else 7
                     else:
-                        interval_days = 7
+                        is_monthly = True
 
-                # For recurring amount: use median of non-image-extracted events.
-                # Image events are one-off receipts and should not drive recurring projections.
+                # Representative amount: median of past non-image events
                 non_image_events = [e for e in events if e['event_id'] not in image_eids]
                 ref_events = non_image_events if non_image_events else events
-                
-                # Use last non-image event as the anchor for recurrence
                 last_event = ref_events[-1]
                 
-                # Compute representative amount: median of recent non-image event amounts
                 recent_events = ref_events[-12:] if len(ref_events) > 12 else ref_events
                 raw_amounts = []
                 for ev in recent_events:
@@ -132,10 +147,7 @@ class FinancialSimulator:
                 if raw_amounts:
                     raw_amounts.sort()
                     n = len(raw_amounts)
-                    if n % 2 == 0:
-                        median_amt = (raw_amounts[n//2 - 1] + raw_amounts[n//2]) / 2.0
-                    else:
-                        median_amt = raw_amounts[n//2]
+                    median_amt = (raw_amounts[n//2 - 1] + raw_amounts[n//2]) / 2.0 if n % 2 == 0 else raw_amounts[n//2]
                     latest_amt = median_amt
                 else:
                     latest_amt = last_event['amount']
@@ -143,18 +155,17 @@ class FinancialSimulator:
                         latest_amt = self.loader.fx.convert(latest_amt, request_date_str, last_event['currency'], home_curr)
 
                 # Salary overrides from messages
-                if cat == 'salary' and salary_update['confirmed_salary_amount'] is not None:
-                    amt = salary_update['confirmed_salary_amount']
-                    if salary_update['confirmed_salary_currency'] and salary_update['confirmed_salary_currency'] != home_curr:
-                        amt = self.loader.fx.convert(amt, request_date_str, salary_update['confirmed_salary_currency'], home_curr)
-                    latest_amt = amt
-                
-                # For salary, use last event (scheduled or settled) amount directly - don't median it
-                if cat == 'salary' and salary_update['confirmed_salary_amount'] is None:
-                    latest_amt = last_event['amount']
-                    if last_event['currency'] != home_curr:
-                        latest_amt = self.loader.fx.convert(latest_amt, request_date_str, last_event['currency'], home_curr)
-                
+                if cat == 'salary':
+                    if salary_update['confirmed_salary_amount'] is not None:
+                        amt = salary_update['confirmed_salary_amount']
+                        if salary_update['confirmed_salary_currency'] and salary_update['confirmed_salary_currency'] != home_curr:
+                            amt = self.loader.fx.convert(amt, request_date_str, salary_update['confirmed_salary_currency'], home_curr)
+                        latest_amt = amt
+                    else:
+                        latest_amt = last_event['amount']
+                        if last_event['currency'] != home_curr:
+                            latest_amt = self.loader.fx.convert(latest_amt, request_date_str, last_event['currency'], home_curr)
+
                 # Rent multipliers
                 if cat in ('rent', 'housing') and rent_mult is not None:
                     latest_amt *= rent_mult
@@ -162,15 +173,14 @@ class FinancialSimulator:
                 streams.append({
                     'category': cat,
                     'direction': direction,
-                    'event_type': etype,
                     'is_monthly': is_monthly,
                     'interval_days': interval_days,
                     'day_of_month': dates[-1].day if is_monthly else None,
                     'last_date': parse_date(last_event['settlement_date'] or last_event['event_date']),
                     'amount': latest_amt,
                     'currency': home_curr,
-                    'flexibility': last_event['flexibility'],
-                    'minimum_allowed_amount': last_event['minimum_allowed_amount'],
+                    'flexibility': last_event.get('flexibility', 'fixed'),
+                    'minimum_allowed_amount': last_event.get('minimum_allowed_amount'),
                     'last_event_id': last_event['event_id'],
                     'description': last_event['description']
                 })
@@ -188,9 +198,7 @@ class FinancialSimulator:
         salary_update = self.loader.msg_parser.extract_salary_updates(user_id, request_date_str)
         
         # Collect already-scheduled / pending events in the 90-day window
-        # Track which (category, direction, event_type) groups have already-scheduled items
-        # so we don't double-count recurring streams on days where a scheduled event already exists.
-        scheduled_by_group: Dict[Tuple, Set[datetime.date]] = defaultdict(set)
+        scheduled_by_cat: Dict[Tuple[str, str], Set[datetime.date]] = defaultdict(set)
 
         for e in self.loader.events_by_user.get(user_id, []):
             s_date = parse_date(e['settlement_date'] or e['event_date'])
@@ -202,7 +210,7 @@ class FinancialSimulator:
                 if e['currency'] != home_curr:
                     amt = self.loader.fx.convert(amt, format_date(s_date), e['currency'], home_curr)
                 daily_delta[s_date] -= amt
-                scheduled_by_group[(e['category'], e['direction'], e['event_type'])].add(s_date)
+                scheduled_by_cat[(e['category'], e['direction'])].add(s_date)
             elif e['status'] == 'scheduled':
                 amt = e['amount']
                 if e['currency'] != home_curr:
@@ -211,7 +219,7 @@ class FinancialSimulator:
                     daily_delta[s_date] -= amt
                 elif e['direction'] == 'credit':
                     daily_delta[s_date] += amt
-                scheduled_by_group[(e['category'], e['direction'], e['event_type'])].add(s_date)
+                scheduled_by_cat[(e['category'], e['direction'])].add(s_date)
 
         # One-off salary adjustment if present
         if salary_update['one_off_adjustment'] > 0 and salary_update['confirmed_salary_date']:
@@ -236,7 +244,7 @@ class FinancialSimulator:
             if amt == 0:
                 continue
 
-            group_key = (s['category'], direction, s['event_type'])
+            cat_key = (s['category'], direction)
 
             curr_d = s['last_date']
             while curr_d <= end_date:
@@ -246,8 +254,8 @@ class FinancialSimulator:
                     curr_d = add_days(curr_d, s['interval_days'] or 7)
                 
                 if req_date <= curr_d <= end_date:
-                    # Skip days already covered by explicit scheduled/pending events
-                    if curr_d in scheduled_by_group.get(group_key, set()):
+                    # Skip days already covered by explicit scheduled/pending events within +-3 days
+                    if any(abs((curr_d - sd).days) <= 3 for sd in scheduled_by_cat.get(cat_key, set())):
                         continue
                     if direction == 'credit':
                         daily_delta[curr_d] += amt

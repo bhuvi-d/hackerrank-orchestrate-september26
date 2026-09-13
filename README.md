@@ -1,10 +1,9 @@
 # Buy or Wait? — Hybrid AI Financial Decision Agent
 
 An AI-powered financial agent for HackerRank Orchestrate (September 2026).
-
 ---
 
-## Overview
+##  Sytem Overview
 
 The system uses a **hybrid agentic architecture**: a Gemini 2.0 Flash LLM agent that calls deterministic financial simulation tools to evaluate each purchase or payment request and produce a safe, personalized recommendation.
 

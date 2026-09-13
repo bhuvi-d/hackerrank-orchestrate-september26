@@ -17,7 +17,7 @@ def package_submission(output_zip: str = 'code.zip'):
         ('code/validate_samples.py', 'code/validate_samples.py'),
         ('code/main.py', 'code/main.py'),
         ('code/package.py', 'code/package.py'),
-        ('code/evaluation/usage_report.md', 'evaluation/usage_report.md'),
+        ('evaluation/usage_report.md' if os.path.exists('evaluation/usage_report.md') else 'code/evaluation/usage_report.md', 'evaluation/usage_report.md'),
         ('README.md', 'README.md')
     ]
 
